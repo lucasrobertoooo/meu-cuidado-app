@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#f6ebeb">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Meu Cuidado">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="creature/char-3.png">
+<title>Meu Cuidado</title>
+<style>
+  :root{
+    --bg:#f6ebeb; --paper:#ffffff; --ink:#1c1518; --ink2:#3a2c30; --muted:#8b7378; --faint:#b6a0a4;
+    --sage:#db2b3f; --sage-soft:#f7ccce; --clay:#b3122a; --line:rgba(28,21,24,.09); --line2:rgba(28,21,24,.15);
+    --shadow:0 1px 2px rgba(120,20,35,.05), 0 10px 26px -14px rgba(120,20,35,.22);
+    --r:18px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0;color:var(--ink);background:var(--bg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  body{min-height:100vh;min-height:100dvh;
+    background-image:radial-gradient(120% 80% at 0% 0%,rgba(219,43,63,.07),transparent 50%),radial-gradient(110% 70% at 100% 0%,rgba(179,18,42,.06),transparent 55%),linear-gradient(180deg,#f6ebeb,#fbf3f3 30%,#f4e6e6);
+    background-attachment:fixed;padding:calc(14px + env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom))}
+  .wrap{max-width:520px;margin:0 auto}
+  header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+  header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:-.02em}
+  header .gear{background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer;padding:6px;line-height:1}
+  .sub{margin:0 0 16px;font-size:13px;color:var(--muted)}
+  .card{background:var(--paper);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:16px;margin-bottom:14px}
+  /* criatura */
+  .creature-card{text-align:center;background:linear-gradient(180deg,#fff,#fdf6f6)}
+  .cr-stage{width:150px;height:150px;margin:4px auto 6px;display:flex;align-items:center;justify-content:center;position:relative}
+  .cr-stage img{max-width:100%;max-height:100%;object-fit:contain;animation:bob 3.4s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+  .cr-stage.glow-gold::before,.cr-stage.glow-elf::before{content:"";position:absolute;inset:8%;border-radius:50%;z-index:-1;filter:blur(14px)}
+  .cr-stage.glow-gold::before{background:radial-gradient(circle,rgba(255,207,106,.7),transparent 70%)}
+  .cr-stage.glow-elf::before{background:radial-gradient(circle,rgba(185,140,255,.65),transparent 70%)}
+  .cr-name{font-size:20px;font-weight:800;letter-spacing:-.01em}
+  .cr-level{font-size:12.5px;color:var(--sage);font-weight:700;margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+  .cr-text{font-size:13px;color:var(--muted);margin-top:6px}
+  .xpbar{height:9px;background:var(--sage-soft);border-radius:6px;overflow:hidden;margin:14px 4px 6px}
+  .xpfill{height:100%;background:linear-gradient(90deg,#e0455a,#c0182f);border-radius:6px;transition:width .5s}
+  .xpnum{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .caredays{margin-top:10px;font-size:13px;color:var(--ink2)}
+  .caredays b{color:var(--sage);font-weight:800;font-size:16px}
+  /* check-ins */
+  .sec{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:20px 6px 10px}
+  .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .chk{display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:12px 13px}
+  .chk.done{background:var(--sage-soft);border-color:transparent}
+  .chk .ic{font-size:19px;line-height:1;flex:none}
+  .chk .nm{flex:1;font-size:13.5px;font-weight:600;min-width:0}
+  .chk .st{flex:none;font-size:12px;font-weight:700;color:var(--muted)}
+  .chk.done .st{color:var(--sage)}
+  /* treino */
+  .tr{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:none;cursor:pointer;background:linear-gradient(135deg,var(--sage),#b21e30);color:#fff;border-radius:14px;padding:14px 16px}
+  .tr.is-done{background:var(--sage-soft);color:var(--sage)}
+  .tr-body{flex:1;min-width:0}
+  .tr-title{font-weight:800;font-size:15px}
+  .tr-sub{font-size:12px;opacity:.9;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .tr-cta{flex:none;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+  /* estados */
+  .state-msg{text-align:center;color:var(--muted);font-size:14px;padding:30px 10px;line-height:1.5}
+  .state-msg b{color:var(--ink)}
+  .foot{text-align:center;color:var(--faint);font-size:11px;margin-top:18px}
+  /* modal PAT */
+  .modal{position:fixed;inset:0;background:rgba(28,21,24,.5);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
+  .modal.show{display:flex}
+  .modal-card{background:var(--paper);border-radius:var(--r);padding:20px;width:100%;max-width:400px;box-shadow:var(--shadow)}
+  .modal-card h3{margin:0 0 6px;font-size:17px}
+  .modal-card p{margin:0 0 12px;font-size:12.5px;color:var(--muted);line-height:1.45}
+  .modal-card input{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:10px;padding:11px;font:inherit;font-size:14px;margin-bottom:12px}
+  .modal-btns{display:flex;gap:8px;justify-content:flex-end}
+  .btn{border:none;border-radius:11px;padding:10px 16px;font:inherit;font-weight:700;cursor:pointer}
+  .btn.ghost{background:var(--bg);color:var(--ink2)}
+  .btn.solid{background:var(--sage);color:#fff}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Meu Cuidado</h1>
+    <button class="gear" id="gear" title="Ajustes" aria-label="Ajustes">⚙</button>
+  </header>
+  <p class="sub" id="sub">Um cantinho pra cuidar de você.</p>
+  <div id="app"></div>
+  <div class="foot" id="foot"></div>
+</div>
+
+<div class="modal" id="patModal">
+  <div class="modal-card">
+    <h3>Conectar</h3>
+    <p>Cola o token (PAT) do <b>meu-cuidado-sync</b>. Ele conecta este celular ao seu Meu Cuidado do computador. Fica só neste aparelho.</p>
+    <input id="patInput" type="password" placeholder="github_pat_… (cola aqui)" autocomplete="off">
+    <div class="modal-btns">
+      <button class="btn ghost" id="patCancel">Fechar</button>
+      <button class="btn solid" id="patSave">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const OWNER='lucasrobertoooo', REPO='meu-cuidado-sync', BRANCH='main';
+const LS_PAT='meucuidado_pat_v1';
+const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
+const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
+const GLOW=['','','','','','','glow-gold','glow-elf'];
+const STAGE_TEXT=['O que será que vai nascer?','Acabou de nascer','Crescendo com você','Seu companheiro fiel','Forte e presente','Sábio e sereno','Radiante de tanto cuidado','Espírito pleno ✨'];
+const HABITS=[
+  ['agua','💧','Água'],['remedio','💊','Remédio'],['pilula','🌟','Pílula do dia'],
+  ['leitura','📖','Leitura'],['mobi','🤸','Mobilidade'],['atencao','👁️','Atenção']
+];
+function levelIdx(xp){ let i=0; for(let j=0;j<LEVELS.length;j++) if(xp>=LEVELS[j][1]) i=j; return i; }
+
+function getPat(){ try{ return localStorage.getItem(LS_PAT)||''; }catch(e){ return ''; } }
+async function ghGet(file){
+  const pat=getPat(); if(!pat) return {err:'no-pat'};
+  try{
+    const r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${file}?ref=${BRANCH}`,{headers:{Authorization:'Bearer '+pat,Accept:'application/vnd.github+json'}});
+    if(r.status===401||r.status===403) return {err:'auth'};
+    if(!r.ok) return {err:'http-'+r.status};
+    const j=await r.json();
+    const txt=decodeURIComponent(escape(atob((j.content||'').replace(/\n/g,''))));
+    return {data:JSON.parse(txt)};
+  }catch(e){ return {err:'net'}; }
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function renderMirror(snap, treino){
+  const app=document.getElementById('app');
+  const xp=snap.xp||0;
+  const idx=levelIdx(xp);
+  const asset=ASSET[idx], glow=GLOW[idx];
+  const name=(snap.creatureNames&&snap.creatureNames[asset]) || LEVELS[idx][0];
+  const cur=LEVELS[idx][1], nxt=LEVELS[idx+1]?LEVELS[idx+1][1]:cur;
+  const pct=nxt>cur?Math.min(100,Math.round((xp-cur)/(nxt-cur)*100)):100;
+  const care=snap.careDays||0;
+  const doneKeys=(snap.doneToday&&snap.doneToday.keys)||[];
+  const waterUnits=snap.water||0;
+
+  let checks=HABITS.map(([k,ic,nm])=>{
+    const done=doneKeys.indexOf(k)>=0 || (k==='agua'&&waterUnits>0);
+    return `<div class="chk ${done?'done':''}"><span class="ic">${ic}</span><span class="nm">${nm}</span><span class="st">${done?'✓':'—'}</span></div>`;
+  }).join('');
+
+  let trHtml='';
+  if(treino && treino.name){
+    const today=new Date().toLocaleDateString('sv-SE');
+    const fresh=treino.ts && (new Date(treino.ts).toLocaleDateString('sv-SE')===today);
+    const tdone=fresh&&treino.doneToday;
+    trHtml=`<div class="sec">Treino</div>
+      <button class="tr ${tdone?'is-done':''}" onclick="window.open('https://lucasrobertoooo.github.io/meu-treino-ela/','_blank')">
+        <div class="tr-body"><div class="tr-title">${esc(treino.name)}${tdone?' · ✓':''}</div><div class="tr-sub">${esc(treino.focus||'')}</div></div>
+        <span class="tr-cta">${tdone?'ver':'treinar'}</span>
+      </button>`;
+  }
+
+  app.innerHTML=`
+    <div class="card creature-card">
+      <div class="cr-stage ${glow}"><img src="creature/${asset}.png" alt=""></div>
+      <div class="cr-name">${esc(name)}</div>
+      <div class="cr-level">${esc(LEVELS[idx][0])}</div>
+      <div class="cr-text">${esc(STAGE_TEXT[idx]||'')}</div>
+      <div class="xpbar"><div class="xpfill" style="width:${pct}%"></div></div>
+      <div class="xpnum">${xp} / ${nxt} xp</div>
+      <div class="caredays"><b>${care}</b> ${care===1?'dia':'dias'} de cuidado 🦇</div>
+    </div>
+    <div class="sec">Check-ins de hoje</div>
+    <div class="checks">${checks}</div>
+    ${trHtml}`;
+}
+
+function showState(html){ document.getElementById('app').innerHTML=`<div class="card"><div class="state-msg">${html}</div></div>`; }
+
+let _lastOk=0;
+async function refresh(){
+  if(!getPat()){ showState('Toque em <b>⚙</b> e cole o token pra conectar ao seu Meu Cuidado.'); return; }
+  const [s,t]=await Promise.all([ghGet('snapshot.json'), ghGet('treino-status.json')]);
+  if(s.err==='auth'){ showState('Token inválido ou sem acesso. Toque em <b>⚙</b> e cole de novo.'); return; }
+  if(s.err){ if(_lastOk===0) showState('Sem conexão com o Meu Cuidado.<br>Tenta de novo em instantes…'); return; }
+  if(s.data && s.data.placeholder){ showState('Conectado! Aguardando o Meu Cuidado do computador enviar seus dados…<br><small>Abre o app no PC pra ele publicar.</small>'); return; }
+  _lastOk=Date.now();
+  renderMirror(s.data||{}, (t&&t.data&&!t.data.placeholder)?t.data:null);
+  document.getElementById('foot').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+// modal PAT
+const modal=document.getElementById('patModal');
+document.getElementById('gear').onclick=()=>{ document.getElementById('patInput').value=''; modal.classList.add('show'); };
+document.getElementById('patCancel').onclick=()=>modal.classList.remove('show');
+document.getElementById('patSave').onclick=()=>{
+  const v=(document.getElementById('patInput').value||'').trim();
+  if(v.length>=20){ try{ localStorage.setItem(LS_PAT,v); }catch(e){} }
+  modal.classList.remove('show'); refresh();
+};
+
+refresh();
+setInterval(refresh, 25000);
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refresh(); });
+
+if('serviceWorker' in navigator && location.protocol==='https:'){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>

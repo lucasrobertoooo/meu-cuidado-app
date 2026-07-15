@@ -1,0 +1,16 @@
+{
+  "name": "Meu Cuidado",
+  "short_name": "Meu Cuidado",
+  "description": "Seu companheiro de autocuidado — a criatura, os cuidados do dia e o treino.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6ebeb",
+  "theme_color": "#f6ebeb",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "creature/char-3.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "creature/char-5.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
