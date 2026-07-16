@@ -110,13 +110,6 @@ const OWNER='lucasrobertoooo', REPO='meu-cuidado-sync', BRANCH='main';
 const LS_PAT='meucuidado_pat_v1';
 const LS_NOTIF='meucuidado_notif_v1';
 const VAPID_PUBLIC='BJ58DKdvFp_-vpUdy4QzqzhEnjHAHrt4gFH0ckR6VACPFuBbjBP4oAq_w5k9ZAJ5uGNVZRHodSl1y68S3VTGxIM';
-const AGUA_FRASES=[
-  'Bebe água, humana. Tua criatura cuida melhor de quem se cuida. 💧',
-  'Um gole agora. As sombras aprovam a hidratação.',
-  'Psiu… água. Teu cérebro sussurra obrigada.',
-  'Hora do golinho. Eu vejo tudo — até a sede.',
-  'Água. Simples assim. Me deixa orgulhosa, guardiã.',
-];
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
 const GLOW=['','','','','','','glow-gold','glow-elf'];
@@ -197,7 +190,7 @@ async function refresh(){
   if(s.data && s.data.placeholder){ showState('Conectado! Aguardando o Meu Cuidado do computador enviar seus dados…<br><small>Abre o app no PC pra ele publicar.</small>'); return; }
   _lastOk=Date.now();
   renderMirror(s.data||{}, (t&&t.data&&!t.data.placeholder)?t.data:null);
-  ensureNotif(s.data);
+  ensureNotif();
   document.getElementById('foot').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -242,42 +235,12 @@ async function publishSubscription(sub){
   }
   return {err:'conflict'};
 }
-function aguaPhrase(seed){ return AGUA_FRASES[Math.abs(seed)%AGUA_FRASES.length]; }
-async function armWaterFromSnap(snap){
-  try{
-    if(!('serviceWorker' in navigator)) return;
-    if(!('Notification' in window) || Notification.permission!=='granted') return;
-    if(!('showTrigger' in Notification.prototype) && !('TimestampTrigger' in window)) return; // sem suporte
-    const agua=snap&&snap.reminders&&snap.reminders.agua;
-    if(!agua||!agua.enabled||!Array.isArray(agua.times)||!agua.times.length) return;
-    const reg=await navigator.serviceWorker.ready;
-    const now=Date.now();
-    for(let off=0;off<3;off++){ // hoje + 2 dias de buffer
-      const base=new Date(); base.setDate(base.getDate()+off);
-      const y=base.getFullYear(), mo=String(base.getMonth()+1).padStart(2,'0'), d=String(base.getDate()).padStart(2,'0');
-      for(const t of agua.times){
-        const [hh,mm]=String(t).split(':').map(Number);
-        const when=new Date(base); when.setHours(hh,mm||0,0,0);
-        const ts=when.getTime();
-        if(ts<=now+60000) continue;
-        const tag=`mc-agua-${y}${mo}${d}-${String(t).replace(':','')}`;
-        try{
-          await reg.showNotification('💧 Hora da água',{
-            body:aguaPhrase(hh*60+(mm||0)+off), tag, icon:'icon-192.png', badge:'icon-192.png',
-            renotify:false, silent:false, showTrigger:new TimestampTrigger(ts), data:{url:'./'}
-          });
-        }catch(e){}
-      }
-    }
-  }catch(e){}
-}
 function notifStatusText(){
   const el=document.getElementById('notifStatus'); if(!el) return;
   if(!('Notification' in window)){ el.textContent='Este navegador não suporta notificações.'; return; }
   const p=Notification.permission;
   if(p==='granted' && localStorage.getItem(LS_NOTIF)==='on'){
-    const trig=('showTrigger' in Notification.prototype)||('TimestampTrigger' in window);
-    el.textContent='Ativado ✓ Remédio (na hora certa) e água'+(trig?'':' — obs: água agendada só funciona bem no Chrome Android');
+    el.textContent='Ativado ✓ Água e remédio chegam na hora certa, na voz da criatura.';
   } else if(p==='denied'){ el.textContent='Notificações bloqueadas nas configurações do navegador. Libere pra ativar.'; }
   else { el.textContent='Toque pra ativar remédio e água na voz da criatura, nos horários que você configura no PC.'; }
 }
@@ -295,20 +258,17 @@ async function enableNotifications(){
     const pub=await publishSubscription(sub);
     if(pub.err){ if(st) st.textContent='Ativei local, mas falhou registrar o remédio no servidor ('+pub.err+'). Tenta de novo.'; }
     localStorage.setItem(LS_NOTIF,'on');
-    const snap=await ghGetMeta('snapshot.json');
-    if(snap.data) armWaterFromSnap(snap.data);
   }catch(e){ if(st) st.textContent='Falhou: '+(e&&e.message||e); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='🔔 Ativar lembretes no celular'; } notifStatusText(); }
 }
 // re-arma silenciosamente no boot/refresh se já estava ativo
-async function ensureNotif(snap){
+async function ensureNotif(){
   if(!('Notification' in window) || Notification.permission!=='granted' || localStorage.getItem(LS_NOTIF)!=='on') return;
   try{
     const reg=await navigator.serviceWorker.ready;
     let sub=await reg.pushManager.getSubscription();
     if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); await publishSubscription(sub); }
   }catch(e){}
-  if(snap) armWaterFromSnap(snap);
 }
 
 // modal PAT
