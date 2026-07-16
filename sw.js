@@ -1,5 +1,6 @@
-const SHELL = 'meucuidado-shell-v1';
+const SHELL = 'meucuidado-shell-v2';
 const ASSETS = ['./', './index.html', './manifest.json',
+  './icon-192.png','./icon-512.png','./apple-touch-icon.png',
   './creature/char-egg.png','./creature/char-1.png','./creature/char-2.png','./creature/char-3.png','./creature/char-4.png','./creature/char-5.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(SHELL).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== SHELL).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
