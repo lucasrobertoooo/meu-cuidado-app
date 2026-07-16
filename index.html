@@ -50,6 +50,10 @@
   .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
   .chk{display:flex;align-items:center;gap:10px;background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:12px 13px}
   .chk.done{background:var(--sage-soft);border-color:transparent}
+  .chk{font:inherit;text-align:left;width:100%;cursor:pointer;-webkit-appearance:none;color:var(--ink);transition:transform .12s ease,background .2s}
+  .chk:active{transform:scale(.97)}
+  .chk.justdone{animation:pop .32s ease}
+  @keyframes pop{0%{transform:scale(1)}40%{transform:scale(1.06)}100%{transform:scale(1)}}
   .chk .ic{font-size:19px;line-height:1;flex:none}
   .chk .nm{flex:1;font-size:13.5px;font-weight:600;min-width:0}
   .chk .st{flex:none;font-size:12px;font-weight:700;color:var(--muted)}
@@ -110,6 +114,8 @@ const OWNER='lucasrobertoooo', REPO='meu-cuidado-sync', BRANCH='main';
 const LS_PAT='meucuidado_pat_v1';
 const LS_NOTIF='meucuidado_notif_v1';
 const VAPID_PUBLIC='BJ58DKdvFp_-vpUdy4QzqzhEnjHAHrt4gFH0ckR6VACPFuBbjBP4oAq_w5k9ZAJ5uGNVZRHodSl1y68S3VTGxIM';
+const LS_QUEUE='meucuidado_inbox_q_v1';
+let _optimistic=new Set();
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
 const GLOW=['','','','','','','glow-gold','glow-elf'];
@@ -146,10 +152,12 @@ function renderMirror(snap, treino){
   const care=snap.careDays||0;
   const doneKeys=(snap.doneToday&&snap.doneToday.keys)||[];
   const waterUnits=snap.water||0;
+  // confirmou pelo snapshot? tira do otimista
+  _optimistic.forEach(k=>{ if(doneKeys.indexOf(k)>=0 || (k==='agua'&&waterUnits>0)) _optimistic.delete(k); });
 
   let checks=HABITS.map(([k,ic,nm])=>{
-    const done=doneKeys.indexOf(k)>=0 || (k==='agua'&&waterUnits>0);
-    return `<div class="chk ${done?'done':''}"><span class="ic">${ic}</span><span class="nm">${nm}</span><span class="st">${done?'✓':'—'}</span></div>`;
+    const done=doneKeys.indexOf(k)>=0 || (k==='agua'&&waterUnits>0) || _optimistic.has(k);
+    return `<button class="chk ${done?'done':''}" data-h="${k}" onclick="sendCheckin('${k}')"><span class="ic">${ic}</span><span class="nm">${nm}</span><span class="st">${done?'✓':'—'}</span></button>`;
   }).join('');
 
   let trHtml='';
@@ -191,6 +199,7 @@ async function refresh(){
   _lastOk=Date.now();
   renderMirror(s.data||{}, (t&&t.data&&!t.data.placeholder)?t.data:null);
   ensureNotif();
+  flushQueue();
   document.getElementById('foot').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
 
@@ -234,6 +243,35 @@ async function publishSubscription(sub){
     if(res.err!=='http-409') return res; // 409 = conflito, tenta de novo
   }
   return {err:'conflict'};
+}
+// ===== Check-ins (celular -> inbox no repo -> Windows aplica) =====
+function loadQueue(){ try{ return JSON.parse(localStorage.getItem(LS_QUEUE)||'[]'); }catch(e){ return []; } }
+function saveQueue(q){ try{ localStorage.setItem(LS_QUEUE,JSON.stringify(q)); }catch(e){} }
+function uid(){ try{ return crypto.randomUUID(); }catch(e){ return Date.now()+'-'+Math.random().toString(36).slice(2); } }
+let _flushing=false;
+async function flushQueue(){
+  if(_flushing || !getPat()) return;
+  let q=loadQueue(); if(!q.length) return;
+  _flushing=true;
+  try{
+    const keep=[];
+    for(const ev of q){
+      const fname='inbox/'+ev.ts+'-'+String(ev.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,10)+'.json';
+      const res=await ghPut(fname,ev,'checkin '+ev.habit);
+      if(!(res.ok || res.err==='http-422')) keep.push(ev); // falhou: retry depois
+    }
+    saveQueue(keep);
+  } finally { _flushing=false; }
+}
+async function sendCheckin(habit){
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  const ev={ id:uid(), ts:Date.now(), day:new Date().toLocaleDateString('sv-SE'), type:'checkin', habit, device:'phone' };
+  const q=loadQueue(); q.push(ev); saveQueue(q);
+  _optimistic.add(habit);
+  const el=document.querySelector('.chk[data-h="'+habit+'"]');
+  if(el){ el.classList.add('done','justdone'); const st=el.querySelector('.st'); if(st) st.textContent='✓'; }
+  try{ navigator.vibrate && navigator.vibrate(15); }catch(e){}
+  await flushQueue();
 }
 function notifStatusText(){
   const el=document.getElementById('notifStatus'); if(!el) return;
