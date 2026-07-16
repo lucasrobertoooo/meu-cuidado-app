@@ -66,6 +66,31 @@
   .cyd.today{box-shadow:0 0 0 2px rgba(179,18,42,.35)}
   .cyc-today{font-size:12.5px;color:var(--muted);white-space:nowrap}
   .cyc-today b{color:var(--ink);font-weight:700}
+  /* prioridades */
+  .pri-card{padding:8px 12px 12px}
+  .pit{display:flex;align-items:center;gap:10px;padding:9px 2px;border-bottom:1px solid var(--line)}
+  .pit:last-of-type{border-bottom:none}
+  .pit-ck{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);background:#fff;cursor:pointer;position:relative;padding:0}
+  .pit.done .pit-ck{background:var(--sage);border-color:transparent}
+  .pit.done .pit-ck::after{content:"✓";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800}
+  .pit-tx{flex:1;font-size:14px;color:var(--ink);word-break:break-word}
+  .pit.done .pit-tx{color:var(--faint);text-decoration:line-through}
+  .pit-x{flex:none;background:none;border:none;color:var(--faint);font-size:20px;line-height:1;cursor:pointer;padding:2px 6px}
+  .pit-empty{padding:8px 2px;font-size:13px;color:var(--muted)}
+  .pit-add{display:flex;gap:8px;margin-top:10px}
+  .pit-add input{flex:1;min-width:0;border:1px solid var(--line2);border-radius:11px;padding:11px;font:inherit;font-size:14px;background:#fff}
+  .pit-addbtn{flex:none;width:44px;border:none;border-radius:11px;background:var(--sage);color:#fff;font-size:22px;font-weight:700;cursor:pointer}
+  /* notas */
+  .notes-card{padding:8px 12px 12px}
+  .note-it{display:block;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:10px 2px;cursor:pointer;font:inherit}
+  .note-it:last-of-type{border-bottom:none}
+  .note-t{font-size:14px;font-weight:700;color:var(--ink)}
+  .note-s{font-size:12px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .note-new{width:100%;margin-top:10px;border:1px dashed var(--line2);border-radius:11px;background:none;color:var(--sage);font:inherit;font-weight:700;padding:11px;cursor:pointer}
+  .note-editor{max-width:440px;display:flex;flex-direction:column;gap:10px}
+  .note-title-in{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:10px;padding:11px;font:inherit;font-size:15px;font-weight:700}
+  .note-body-in{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:10px;padding:11px;font:inherit;font-size:14px;min-height:180px;resize:vertical;line-height:1.5}
+  .note-btns{margin-top:2px}
   /* check-ins */
   .sec{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:20px 6px 10px}
   .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
@@ -130,6 +155,19 @@
   </div>
 </div>
 
+<div class="modal" id="noteModal">
+  <div class="modal-card note-editor">
+    <input type="hidden" id="noteId">
+    <input id="noteTitle" class="note-title-in" type="text" placeholder="Título" maxlength="200" autocomplete="off">
+    <textarea id="noteBody" class="note-body-in" placeholder="Escreve aqui… ideias, listas, lembretes."></textarea>
+    <div class="modal-btns note-btns">
+      <button class="btn ghost" id="noteDel" type="button" style="margin-right:auto">Excluir</button>
+      <button class="btn ghost" id="noteCancel" type="button">Fechar</button>
+      <button class="btn solid" id="noteSave" type="button">Salvar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const OWNER='lucasrobertoooo', REPO='meu-cuidado-sync', BRANCH='main';
 const LS_PAT='meucuidado_pat_v1';
@@ -138,6 +176,9 @@ const VAPID_PUBLIC='BJ58DKdvFp_-vpUdy4QzqzhEnjHAHrt4gFH0ckR6VACPFuBbjBP4oAq_w5k9
 const LS_QUEUE='meucuidado_inbox_q_v1';
 let _optimistic=new Set();
 let _cafeDelta=0, _cafeSeen=null, snapCafe=null;
+const LS_PENDPRI='meucuidado_pendpri_v1', LS_PENDNOTE='meucuidado_pendnote_v1';
+let _lastSnap=null, _lastTreino=null, snapPriorities=[], snapNotes=[];
+function rerender(){ if(_lastSnap) renderMirror(_lastSnap, _lastTreino); }
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
 const GLOW=['','','','','','','glow-gold','glow-elf'];
@@ -237,6 +278,8 @@ function creatureMood(snap){
 }
 function renderMirror(snap, treino){
   const app=document.getElementById('app');
+  _lastSnap=snap; _lastTreino=treino;
+  const _priAddEl=document.getElementById('priAdd'); const _priAddVal=_priAddEl?_priAddEl.value:''; const _priAddFocused=document.activeElement===_priAddEl;
   const xp=snap.xp||0;
   const idx=levelIdx(xp);
   const asset=ASSET[idx], glow=GLOW[idx];
@@ -293,6 +336,16 @@ function renderMirror(snap, treino){
     const dots=cyc.flows.map((f,i)=>`<span class="cyd${i===6?' today':''}" style="background:${COL[f]||COL[0]};border-color:${BRD[f]||BRD[0]}"></span>`).join('');
     cycleHtml=`<div class="sec">Ciclo · últimos 7 dias</div><div class="card cyc-card"><div class="cyc-dots">${dots}</div><div class="cyc-today">Hoje: <b>${cyc.logged?esc(LBL[cyc.today]||'Nada'):'—'}</b></div></div>`;
   }
+  // prioridades (mão dupla)
+  reconcilePri(snap.priorities||[]); snapPriorities=snap.priorities||[];
+  const pri=overlayPri(snapPriorities); const priDone=pri.filter(p=>p.done).length;
+  const priItems=pri.length ? pri.map(p=>`<div class="pit ${p.done?'done':''}"><button class="pit-ck" onclick="togglePri('${p.id}',${p.done?'true':'false'})" aria-label="marcar"></button><span class="pit-tx">${esc(p.text)}</span><button class="pit-x" onclick="delPri('${p.id}')" aria-label="remover">×</button></div>`).join('') : `<div class="pit-empty">Nada ainda · adiciona a 1ª abaixo.</div>`;
+  const priHtml=`<div class="sec">Prioridades · ${priDone}/${pri.length}</div><div class="card pri-card">${priItems}<div class="pit-add"><input id="priAdd" placeholder="Nova prioridade…" maxlength="240" onkeydown="if(event.key==='Enter'){event.preventDefault();addPri();}"><button class="pit-addbtn" onclick="addPri()" aria-label="adicionar">+</button></div></div>`;
+  // notas (mão dupla)
+  reconcileNotes(snap.notes||[]); snapNotes=snap.notes||[];
+  const notes=overlayNotes(snapNotes); const shownN=notes.slice(0,4);
+  const noteItems=shownN.length ? shownN.map(n=>`<button class="note-it" onclick="openNoteEditor('${n.id}')"><div class="note-t">${esc(n.title||'Sem título')}</div>${n.body?`<div class="note-s">${esc((n.body||'').slice(0,72).replace(/\n/g,' '))}${(n.body||'').length>72?'…':''}</div>`:''}</button>`).join('') : `<div class="pit-empty">Nenhuma nota ainda.</div>`;
+  const notesHtml=`<div class="sec">Notas${notes.length>4?` · ${notes.length}`:''}</div><div class="card notes-card">${noteItems}<button class="note-new" onclick="openNoteEditor(null)">+ Nova nota</button></div>`;
 
   app.innerHTML=`
     <div class="card creature-card">
@@ -308,10 +361,13 @@ function renderMirror(snap, treino){
     </div>
     <div class="sec">Check-ins de hoje</div>
     <div class="checks">${checks}</div>
+    ${priHtml}
     <div class="sec">Hoje</div>
     <div class="stats">${statsHtml}</div>
     ${cycleHtml}
+    ${notesHtml}
     ${trHtml}`;
+  if(_priAddVal){ const el=document.getElementById('priAdd'); if(el){ el.value=_priAddVal; if(_priAddFocused){ el.focus(); try{ el.setSelectionRange(_priAddVal.length,_priAddVal.length); }catch(e){} } } }
 }
 
 function showState(html){ document.getElementById('app').innerHTML=`<div class="card"><div class="state-msg">${html}</div></div>`; }
@@ -410,6 +466,97 @@ async function sendCheckin(habit){
   try{ navigator.vibrate && navigator.vibrate(15); }catch(e){}
   await flushQueue();
 }
+// ===== Prioridades + Notas (mão dupla, overlay otimista) =====
+async function enqueueEvent(ev){ const q=loadQueue(); q.push(ev); saveQueue(q); await flushQueue(); }
+function loadPend(k){ try{ return JSON.parse(localStorage.getItem(k)||'{}'); }catch(e){ return {}; } }
+function savePend(k,o){ try{ localStorage.setItem(k,JSON.stringify(o)); }catch(e){} }
+// -- prioridades --
+function overlayPri(list){
+  const pend=loadPend(LS_PENDPRI); let out=list.map(p=>({...p})); const byId={}; out.forEach(p=>byId[p.id]=p);
+  Object.keys(pend).forEach(pid=>{ const o=pend[pid];
+    if(o.op==='del'){ out=out.filter(p=>p.id!==pid); }
+    else if(o.op==='add'){ if(!byId[pid]){ out.push({id:pid,text:o.text,done:!!o.done}); byId[pid]=out[out.length-1]; } else byId[pid].done=!!o.done; }
+    else if(o.op==='toggle'){ if(byId[pid]) byId[pid].done=!!o.done; }
+  });
+  return out;
+}
+function reconcilePri(list){
+  const pend=loadPend(LS_PENDPRI); const byId={}; list.forEach(p=>byId[p.id]=p); let ch=false;
+  Object.keys(pend).forEach(pid=>{ const o=pend[pid];
+    if(o.op==='add'&&byId[pid]){ delete pend[pid]; ch=true; }
+    else if(o.op==='toggle'&&byId[pid]&&(!!byId[pid].done===!!o.done)){ delete pend[pid]; ch=true; }
+    else if(o.op==='del'&&!byId[pid]){ delete pend[pid]; ch=true; }
+  });
+  if(ch) savePend(LS_PENDPRI,pend);
+}
+async function addPri(){
+  const inp=document.getElementById('priAdd'); if(!inp) return; const text=(inp.value||'').trim(); if(!text) return;
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  const pid=uid(); const pend=loadPend(LS_PENDPRI); pend[pid]={op:'add',text,done:false}; savePend(LS_PENDPRI,pend);
+  inp.value='';
+  rerender();
+  await enqueueEvent({id:uid(),ts:Date.now(),type:'priority',action:'add',pid,text,device:'phone'});
+}
+async function togglePri(pid,curDone){
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  const target=!curDone; const pend=loadPend(LS_PENDPRI);
+  if(pend[pid]&&pend[pid].op==='add') pend[pid].done=target; else pend[pid]={op:'toggle',done:target};
+  savePend(LS_PENDPRI,pend);
+  try{ navigator.vibrate && navigator.vibrate(12); }catch(e){}
+  rerender();
+  await enqueueEvent({id:uid(),ts:Date.now(),type:'priority',action:'toggle',pid,done:target,device:'phone'});
+}
+async function delPri(pid){
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  const pend=loadPend(LS_PENDPRI); pend[pid]={op:'del'}; savePend(LS_PENDPRI,pend);
+  rerender();
+  await enqueueEvent({id:uid(),ts:Date.now(),type:'priority',action:'del',pid,device:'phone'});
+}
+// -- notas --
+function overlayNotes(list){
+  const pend=loadPend(LS_PENDNOTE); let out=list.map(n=>({...n})); const byId={}; out.forEach(n=>byId[n.id]=n);
+  Object.keys(pend).forEach(nid=>{ const o=pend[nid];
+    if(o.op==='del'){ out=out.filter(n=>n.id!==nid); }
+    else if(o.op==='save'){ if(byId[nid]){ byId[nid].title=o.title; byId[nid].body=o.body; byId[nid].updatedAt=o.updatedAt; } else { out.push({id:nid,title:o.title,body:o.body,updatedAt:o.updatedAt}); byId[nid]=out[out.length-1]; } }
+  });
+  out.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  return out;
+}
+function reconcileNotes(list){
+  const pend=loadPend(LS_PENDNOTE); const byId={}; list.forEach(n=>byId[n.id]=n); let ch=false;
+  Object.keys(pend).forEach(nid=>{ const o=pend[nid];
+    if(o.op==='save'&&byId[nid]&&((byId[nid].updatedAt||0)>=(o.updatedAt||0))){ delete pend[nid]; ch=true; }
+    else if(o.op==='del'&&!byId[nid]){ delete pend[nid]; ch=true; }
+  });
+  if(ch) savePend(LS_PENDNOTE,pend);
+}
+function openNoteEditor(nid){
+  let note={id:uid(),title:'',body:''};
+  if(nid){ const found=overlayNotes(snapNotes).find(n=>n.id===nid); if(found) note=found; }
+  document.getElementById('noteId').value=note.id;
+  document.getElementById('noteTitle').value=note.title||'';
+  document.getElementById('noteBody').value=note.body||'';
+  document.getElementById('noteDel').style.display=nid?'':'none';
+  document.getElementById('noteModal').classList.add('show');
+  setTimeout(()=>{ const t=document.getElementById('noteTitle'); if(t&&!nid) t.focus(); },50);
+}
+function closeNoteEditor(){ document.getElementById('noteModal').classList.remove('show'); }
+async function saveNoteM(){
+  if(!getPat()){ closeNoteEditor(); document.getElementById('gear').click(); return; }
+  const nid=document.getElementById('noteId').value;
+  const title=(document.getElementById('noteTitle').value||'').trim();
+  const body=(document.getElementById('noteBody').value||'');
+  if(!title && !body.trim()){ closeNoteEditor(); return; }
+  const now=Date.now(); const pend=loadPend(LS_PENDNOTE); pend[nid]={op:'save',title,body,updatedAt:now}; savePend(LS_PENDNOTE,pend);
+  closeNoteEditor(); rerender();
+  await enqueueEvent({id:uid(),ts:now,type:'note',action:'save',nid,title,body,updatedAt:now,device:'phone'});
+}
+async function delNoteM(){
+  const nid=document.getElementById('noteId').value; if(!nid){ closeNoteEditor(); return; }
+  const pend=loadPend(LS_PENDNOTE); pend[nid]={op:'del'}; savePend(LS_PENDNOTE,pend);
+  closeNoteEditor(); rerender();
+  await enqueueEvent({id:uid(),ts:Date.now(),type:'note',action:'del',nid,device:'phone'});
+}
 function notifStatusText(){
   const el=document.getElementById('notifStatus'); if(!el) return;
   if(!('Notification' in window)){ el.textContent='Este navegador não suporta notificações.'; return; }
@@ -456,6 +603,10 @@ document.getElementById('patSave').onclick=()=>{
   if(v.length>=20){ try{ localStorage.setItem(LS_PAT,v); }catch(e){} }
   modal.classList.remove('show'); refresh();
 };
+document.getElementById('noteCancel').onclick=closeNoteEditor;
+document.getElementById('noteSave').onclick=saveNoteM;
+document.getElementById('noteDel').onclick=delNoteM;
+document.getElementById('noteModal').addEventListener('click',e=>{ if(e.target.id==='noteModal') closeNoteEditor(); });
 
 refresh();
 setInterval(refresh, 25000);
