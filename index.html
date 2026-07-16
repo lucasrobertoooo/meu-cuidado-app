@@ -381,7 +381,7 @@ async function refresh(){
   if(s.data && s.data.placeholder){ showState('Conectado! Aguardando o Meu Cuidado do computador enviar seus dados…<br><small>Abre o app no PC pra ele publicar.</small>'); return; }
   _lastOk=Date.now();
   renderMirror(s.data||{}, (t&&t.data&&!t.data.placeholder)?t.data:null);
-  ensureNotif();
+  ensureNotif(s.data);
   flushQueue();
   document.getElementById('foot').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
@@ -557,40 +557,69 @@ async function delNoteM(){
   closeNoteEditor(); rerender();
   await enqueueEvent({id:uid(),ts:Date.now(),type:'note',action:'del',nid,device:'phone'});
 }
+const NOTIF_FRASES={
+  agua:['Bebe água, humana. Tua criatura cuida melhor de quem se cuida.','Um gole agora. As sombras aprovam a hidratação.','Psiu… água. Teu cérebro sussurra obrigada.','Hora do golinho. Eu vejo tudo — até a sede.','Água. Simples assim. Me deixa orgulhosa, guardiã.'],
+  remedio:['Hora do remédio. Não me faça usar meus poderes sombrios pra lembrar de novo.','Teu feitiço diário te espera. Toma o remédio — eu fico de olho.','Psiu… humana. O remédio. Cuidar de você é o meu ritual.','Está na hora do remédio. Obedece a criatura fofa.','Remédio agora. Você sã = eu feliz nas sombras.']
+};
+function notifTriggersOK(){ try{ return ('showTrigger' in Notification.prototype) || ('TimestampTrigger' in window); }catch(e){ return false; } }
+// Agenda as notificações LOCALMENTE no aparelho (dispara na hora exata, app aberto ou fechado,
+// sem depender de servidor). Re-arma a cada refresh; tags iguais são substituídas (sem duplicar).
+async function armLocalReminders(snap){
+  try{
+    if(!('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission!=='granted') return;
+    if(!notifTriggersOK()) return;
+    const rem=snap && snap.reminders; if(!rem) return;
+    const reg=await navigator.serviceWorker.ready;
+    const now=Date.now();
+    const TITLE={agua:'💧 Hora da água', remedio:'💊 Remédio'};
+    for(const tipo of ['agua','remedio']){
+      const cfg=rem[tipo]; if(!cfg||!cfg.enabled||!Array.isArray(cfg.times)||!cfg.times.length) continue;
+      const pool=NOTIF_FRASES[tipo]||[''];
+      for(let off=0; off<3; off++){
+        const base=new Date(); base.setDate(base.getDate()+off);
+        const y=base.getFullYear(), mo=String(base.getMonth()+1).padStart(2,'0'), d=String(base.getDate()).padStart(2,'0');
+        for(const t of cfg.times){
+          const [hh,mm]=String(t).split(':').map(Number);
+          const when=new Date(base); when.setHours(hh,mm||0,0,0);
+          const ts=when.getTime();
+          if(ts<=now+20000) continue;
+          const tag=`mc-${tipo}-${y}${mo}${d}-${String(t).replace(':','')}`;
+          try{ await reg.showNotification(TITLE[tipo],{ body:pool[(hh*60+(mm||0)+off)%pool.length]||'', tag, icon:'icon-192.png', badge:'icon-192.png', showTrigger:new TimestampTrigger(ts), data:{url:'./'} }); }catch(e){}
+        }
+      }
+    }
+  }catch(e){}
+}
 function notifStatusText(){
   const el=document.getElementById('notifStatus'); if(!el) return;
   if(!('Notification' in window)){ el.textContent='Este navegador não suporta notificações.'; return; }
   const p=Notification.permission;
   if(p==='granted' && localStorage.getItem(LS_NOTIF)==='on'){
-    el.textContent='Ativado ✓ Água e remédio chegam na hora certa, na voz da criatura.';
+    el.textContent = notifTriggersOK() ? 'Ativado ✓ Água e remédio disparam na hora exata (agendados no aparelho, mesmo com o app fechado).' : 'Ativado, mas este navegador não agenda na hora exata. Use o Chrome com o app instalado na tela inicial.';
   } else if(p==='denied'){ el.textContent='Notificações bloqueadas nas configurações do navegador. Libere pra ativar.'; }
-  else { el.textContent='Toque pra ativar remédio e água na voz da criatura, nos horários que você configura no PC.'; }
+  else { el.textContent='Toque pra ativar água e remédio na voz da criatura, nos horários que você configura no PC.'; }
 }
 async function enableNotifications(){
   const btn=document.getElementById('notifBtn'), st=document.getElementById('notifStatus');
   if(!('Notification' in window)){ if(st) st.textContent='Sem suporte a notificações.'; return; }
-  if(!getPat()){ if(st) st.textContent='Cole o token primeiro, aí ative.'; return; }
   if(btn){ btn.disabled=true; btn.textContent='Ativando…'; }
   try{
     const perm=await Notification.requestPermission();
     if(perm!=='granted'){ if(st) st.textContent='Permissão não concedida.'; return; }
-    const reg=await navigator.serviceWorker.ready;
-    let sub=await reg.pushManager.getSubscription();
-    if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); }
-    const pub=await publishSubscription(sub);
-    if(pub.err){ if(st) st.textContent='Ativei local, mas falhou registrar o remédio no servidor ('+pub.err+'). Tenta de novo.'; }
     localStorage.setItem(LS_NOTIF,'on');
+    let snap=_lastSnap;
+    if(!snap && getPat()){ const g=await ghGetMeta('snapshot.json'); if(g && g.data) snap=g.data; }
+    if(snap) await armLocalReminders(snap);
+    else if(st) st.textContent='Permissão ok. Assim que os horários sincronizarem do PC, os lembretes são agendados.';
+    // inscrição de push (backup best-effort)
+    try{ const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription(); if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); if(getPat()) publishSubscription(sub); }catch(e){}
   }catch(e){ if(st) st.textContent='Falhou: '+(e&&e.message||e); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='🔔 Ativar lembretes no celular'; } notifStatusText(); }
 }
-// re-arma silenciosamente no boot/refresh se já estava ativo
-async function ensureNotif(){
+// re-arma silenciosamente no refresh com os horários mais novos do snapshot
+async function ensureNotif(snap){
   if(!('Notification' in window) || Notification.permission!=='granted' || localStorage.getItem(LS_NOTIF)!=='on') return;
-  try{
-    const reg=await navigator.serviceWorker.ready;
-    let sub=await reg.pushManager.getSubscription();
-    if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); await publishSubscription(sub); }
-  }catch(e){}
+  if(snap) armLocalReminders(snap);
 }
 
 // modal PAT
