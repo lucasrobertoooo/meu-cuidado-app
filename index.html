@@ -599,6 +599,29 @@ function notifStatusText(){
   } else if(p==='denied'){ el.textContent='Notificações bloqueadas nas configurações do navegador. Libere pra ativar.'; }
   else { el.textContent='Toque pra ativar água e remédio na voz da criatura, nos horários que você configura no PC.'; }
 }
+// Diagnóstico — mostra no ⚙ por que a notificação (não) dispara, com dado real.
+async function notifDiag(){
+  const el=document.getElementById('notifStatus'); if(!el) return;
+  const L=[];
+  L.push('Permissão: '+(('Notification' in window)?Notification.permission:'sem suporte'));
+  L.push('Agendar na hora exata: '+(notifTriggersOK()?'suportado ✓':'NÃO suportado ✗ (precisa Chrome + app na tela inicial)'));
+  const rem=_lastSnap&&_lastSnap.reminders;
+  if(rem){
+    const r=rem.remedio, a=rem.agua;
+    L.push('Remédio (PC): '+((r&&r.enabled&&r.times&&r.times.length)?r.times.join(', '):'desligado/sem horário'));
+    L.push('Água (PC): '+((a&&a.enabled&&a.times&&a.times.length)?a.times.join(', '):'desligado/sem horário'));
+  } else L.push('Horários: ainda não chegaram do PC (abra o PC e espere ~10s).');
+  try{
+    if('serviceWorker' in navigator){
+      const reg=await navigator.serviceWorker.ready;
+      let pend=[];
+      try{ const ns=await reg.getNotifications({includeTriggered:true}); pend=(ns||[]).filter(n=>n.tag&&n.tag.indexOf('mc-')===0); }catch(e){ L.push('(não deu pra listar agendadas: '+(e.message||e)+')'); }
+      L.push('Lembretes agendados no aparelho: '+pend.length);
+      if(pend.length){ const tags=pend.map(n=>n.tag.replace('mc-','')).slice(0,4); L.push('→ '+tags.join(' · ')); }
+    }
+  }catch(e){ L.push('SW: '+(e.message||e)); }
+  el.innerHTML=L.map(x=>esc(x)).join('<br>');
+}
 async function enableNotifications(){
   const btn=document.getElementById('notifBtn'), st=document.getElementById('notifStatus');
   if(!('Notification' in window)){ if(st) st.textContent='Sem suporte a notificações.'; return; }
@@ -625,7 +648,7 @@ async function ensureNotif(snap){
 // modal PAT
 const modal=document.getElementById('patModal');
 document.getElementById('notifBtn').onclick=enableNotifications;
-document.getElementById('gear').onclick=()=>{ document.getElementById('patInput').value=''; notifStatusText(); modal.classList.add('show'); };
+document.getElementById('gear').onclick=()=>{ document.getElementById('patInput').value=''; notifStatusText(); modal.classList.add('show'); notifDiag(); };
 document.getElementById('patCancel').onclick=()=>modal.classList.remove('show');
 document.getElementById('patSave').onclick=()=>{
   const v=(document.getElementById('patInput').value||'').trim();
