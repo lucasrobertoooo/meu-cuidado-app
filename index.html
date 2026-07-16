@@ -33,6 +33,7 @@
   .creature-card{text-align:center;background:linear-gradient(180deg,#fff,#fdf6f6)}
   .cr-stage{width:150px;height:150px;margin:4px auto 6px;display:flex;align-items:center;justify-content:center;position:relative}
   .cr-stage img{max-width:100%;max-height:100%;object-fit:contain;animation:bob 3.4s ease-in-out infinite}
+  .cr-stage svg{width:100%;height:100%;animation:bob 3.4s ease-in-out infinite}
   @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
   .cr-stage.glow-gold::before,.cr-stage.glow-elf::before{content:"";position:absolute;inset:8%;border-radius:50%;z-index:-1;filter:blur(14px)}
   .cr-stage.glow-gold::before{background:radial-gradient(circle,rgba(255,207,106,.7),transparent 70%)}
@@ -49,12 +50,22 @@
   .cr-speech{margin:13px 2px 0;font-size:13.5px;color:var(--ink2);line-height:1.45;text-align:left;background:#fff;border:1px solid var(--line);border-radius:14px;padding:11px 13px}
   .cr-speech::before{content:"🦇";margin-right:7px}
   /* strip de stats "Hoje" */
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:9px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:9px}
   .stat{background:var(--paper);border:1px solid var(--line);border-radius:13px;padding:11px 8px;text-align:center}
   .stat-n{font-size:18px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
   .stat-l{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.2}
   .stat.over .stat-n{color:var(--clay)}
   .stat.good .stat-n{color:var(--sage)}
+  .stat.cafe{font:inherit;cursor:pointer;-webkit-appearance:none;transition:transform .12s ease}
+  .stat.cafe:active{transform:scale(.97)}
+  .stat.justdone{animation:pop .32s ease}
+  /* ciclo */
+  .cyc-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}
+  .cyc-dots{display:flex;gap:6px}
+  .cyd{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line2)}
+  .cyd.today{box-shadow:0 0 0 2px rgba(179,18,42,.35)}
+  .cyc-today{font-size:12.5px;color:var(--muted);white-space:nowrap}
+  .cyc-today b{color:var(--ink);font-weight:700}
   /* check-ins */
   .sec{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:20px 6px 10px}
   .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
@@ -126,6 +137,7 @@ const LS_NOTIF='meucuidado_notif_v1';
 const VAPID_PUBLIC='BJ58DKdvFp_-vpUdy4QzqzhEnjHAHrt4gFH0ckR6VACPFuBbjBP4oAq_w5k9ZAJ5uGNVZRHodSl1y68S3VTGxIM';
 const LS_QUEUE='meucuidado_inbox_q_v1';
 let _optimistic=new Set();
+let _cafeDelta=0, _cafeSeen=null, snapCafe=null;
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
 const GLOW=['','','','','','','glow-gold','glow-elf'];
@@ -165,6 +177,64 @@ function creatureSpeech(snap){
   const pool=[`Falta a ${one} ainda… bora?`, `Que tal a ${one} agora? Eu fico de olho.`, `Tô aqui torcendo. A ${one} te espera.`, `Você tá indo bem. Só a ${one} pra fechar.`];
   return pool[doneCount % pool.length];
 }
+// ===== Criatura: mesmo desenho do Windows (PNG sem-rosto + rosto por humor em código) =====
+const MCR_TIERS=[
+  {asset:'char-egg', w:64, h:69, ar:0.93, noFace:true},
+  {asset:'char-1', w:72, h:66, ar:1.63, fy:0.44, fr:0.24},
+  {asset:'char-2', w:77, h:71, ar:1.22, fy:0.40, fr:0.22},
+  {asset:'char-3', w:81, h:75, ar:1.22, fy:0.37, fr:0.20, fangs:true},
+  {asset:'char-4', w:84, h:78, ar:1.32, fy:0.40, fr:0.17, fangs:true},
+  {asset:'char-5', w:86, h:80, ar:1.75, fy:0.40, fr:0.13, fangs:true},
+  {asset:'char-5', w:86, h:80, ar:1.75, fy:0.40, fr:0.13, fangs:true, glow:'gold'},
+  {asset:'char-5', w:86, h:80, ar:1.75, fy:0.40, fr:0.13, fangs:true, glow:'elf'},
+];
+function creatureFace(cx,cy,r,mood,fangs){
+  const ink='#1c1518', gray='#4a3a3e';
+  const sw=Math.max(0.8, r*0.11);
+  const dx=r*0.42;
+  const F=(n)=>n.toFixed(1);
+  const eye=(x)=>{
+    if(mood==='dormindo')  return `<path d="M${F(x-r*0.16)} ${F(cy-r*0.02)} q${F(r*0.16)} ${F(r*0.18)} ${F(r*0.32)} 0" fill="none" stroke="${ink}" stroke-width="${F(sw)}" stroke-linecap="round"/>`;
+    if(mood==='radiante')  return `<path d="M${F(x-r*0.16)} ${F(cy+r*0.05)} q${F(r*0.16)} -${F(r*0.24)} ${F(r*0.32)} 0" fill="none" stroke="${ink}" stroke-width="${F(sw)}" stroke-linecap="round"/>`;
+    if(mood==='murcha')    return `<path d="M${F(x-r*0.14)} ${F(cy)} h${F(r*0.28)}" stroke="${gray}" stroke-width="${F(sw)}" stroke-linecap="round"/>`;
+    if(mood==='escondida') return `<circle cx="${F(x)}" cy="${F(cy)}" r="${F(r*0.08)}" fill="${ink}"/>`;
+    return `<circle cx="${F(x)}" cy="${F(cy)}" r="${F(r*0.15)}" fill="${ink}"/><circle cx="${F(x-r*0.05)}" cy="${F(cy-r*0.06)}" r="${F(r*0.05)}" fill="#fff"/>`;
+  };
+  let s=eye(cx-dx)+eye(cx+dx);
+  const my=cy+r*0.42;
+  if(mood==='radiante')       s+=`<path d="M${F(cx-r*0.22)} ${F(my)} q${F(r*0.22)} ${F(r*0.28)} ${F(r*0.44)} 0" fill="none" stroke="${ink}" stroke-width="${F(sw)}" stroke-linecap="round"/>`;
+  else if(mood==='sede'){     s+=`<ellipse cx="${F(cx)}" cy="${F(my)}" rx="${F(r*0.1)}" ry="${F(r*0.13)}" fill="${ink}"/>`;
+                              s+=`<path d="M${F(cx+dx+r*0.16)} ${F(cy-r*0.06)} q${F(r*0.1)} ${F(r*0.2)} 0 ${F(r*0.3)} q-${F(r*0.1)} -${F(r*0.1)} 0 -${F(r*0.3)} Z" fill="#8fc7e8" opacity=".9"/>`; }
+  else if(mood==='murcha')    s+=`<path d="M${F(cx-r*0.18)} ${F(my+r*0.06)} q${F(r*0.18)} -${F(r*0.2)} ${F(r*0.36)} 0" fill="none" stroke="${gray}" stroke-width="${F(sw)}" stroke-linecap="round"/>`;
+  else if(mood==='escondida') s+=`<path d="M${F(cx-r*0.12)} ${F(my)} h${F(r*0.24)}" stroke="${gray}" stroke-width="${F(sw*0.9)}" stroke-linecap="round"/>`;
+  else                        s+=`<path d="M${F(cx-r*0.16)} ${F(my)} q${F(r*0.16)} ${F(r*0.16)} ${F(r*0.32)} 0" fill="none" stroke="${ink}" stroke-width="${F(sw)}" stroke-linecap="round"/>`;
+  if(fangs && mood!=='escondida'){
+    const fy=my+r*0.02, fd=r*0.14, fw=r*0.075, fh=r*0.24;
+    s+=`<path d="M${F(cx-fd-fw)} ${F(fy)} L${F(cx-fd+fw)} ${F(fy)} L${F(cx-fd)} ${F(fy+fh)} Z" fill="#fff" stroke="${ink}" stroke-width="${F(sw*0.35)}" stroke-linejoin="round"/>`;
+    s+=`<path d="M${F(cx+fd-fw)} ${F(fy)} L${F(cx+fd+fw)} ${F(fy)} L${F(cx+fd)} ${F(fy+fh)} Z" fill="#fff" stroke="${ink}" stroke-width="${F(sw*0.35)}" stroke-linejoin="round"/>`;
+  }
+  return s;
+}
+function creatureSVG(idx, mood){
+  const t=MCR_TIERS[idx]||MCR_TIERS[1];
+  const cy=54, x=(48-t.w/2).toFixed(1), y=(cy-t.h/2).toFixed(1);
+  let b=`<image href="creature/${t.asset}.png" x="${x}" y="${y}" width="${t.w}" height="${t.h}" preserveAspectRatio="xMidYMid meet"/>`;
+  if(!t.noFace){
+    const rW=Math.min(t.w, t.h*t.ar);
+    const faceCy=cy+(t.fy-0.5)*(rW/t.ar);
+    b+=creatureFace(48, faceCy, t.fr*rW, mood, !!t.fangs);
+  }
+  return `<svg viewBox="0 0 384 432" preserveAspectRatio="xMidYMid meet"><g transform="scale(4)">${b}</g></svg>`;
+}
+function creatureMood(snap){
+  const done=(snap.doneToday&&snap.doneToday.keys)||[]; const water=snap.water||0;
+  const all=['agua','remedio','pilula','leitura','mobi','atencao'];
+  const isDone=k=>done.indexOf(k)>=0||(k==='agua'&&water>0);
+  const missing=all.filter(k=>!isDone(k));
+  if(!missing.length) return 'radiante';
+  if(missing.length===all.length) return 'sede';
+  return 'tranquila';
+}
 function renderMirror(snap, treino){
   const app=document.getElementById('app');
   const xp=snap.xp||0;
@@ -197,19 +267,36 @@ function renderMirror(snap, treino){
   }
 
   const goalUnits=snap.waterGoalUnits||8;
-  const cafe=snap.cafe;
+  const cafe=snap.cafe; snapCafe=cafe;
   const streaks=snap.streaks||{};
   const ident=snap.identity||'';
+  const mood=creatureMood(snap);
   const speech=creatureSpeech(snap);
   const waterDone=waterUnits>=goalUnits;
   let statsHtml=`<div class="stat ${waterDone?'good':''}"><div class="stat-n">${waterUnits}/${goalUnits}</div><div class="stat-l">💧 copos</div></div>`;
-  if(cafe) statsHtml+=`<div class="stat ${cafe.doses>cafe.limit?'over':(cafe.streak?'good':'')}"><div class="stat-n">${cafe.doses}/${cafe.limit}</div><div class="stat-l">☕ café${cafe.streak?` · 🔥${cafe.streak}d`:''}</div></div>`;
-  if(streaks.pilula) statsHtml+=`<div class="stat good"><div class="stat-n">🔥 ${streaks.pilula}</div><div class="stat-l">pílula seguidos</div></div>`;
-  if(streaks.remedio) statsHtml+=`<div class="stat good"><div class="stat-n">🔥 ${streaks.remedio}</div><div class="stat-l">remédio seguidos</div></div>`;
+  if(cafe){
+    const base=cafe.doses||0;
+    if(_cafeSeen!==null && base>_cafeSeen) _cafeDelta=Math.max(0,_cafeDelta-(base-_cafeSeen));
+    _cafeSeen=base;
+    const shown=base+_cafeDelta, over=shown>cafe.limit;
+    statsHtml+=`<button class="stat cafe ${over?'over':(cafe.streak?'good':'')}" data-cafe onclick="sendCafe()"><div class="stat-n">${shown}/${cafe.limit}</div><div class="stat-l">☕ café${cafe.streak?` · 🔥${cafe.streak}d`:''} · toque +1</div></button>`;
+  } else {
+    const doneCount=HABITS.filter(([k])=>doneKeys.indexOf(k)>=0||(k==='agua'&&waterUnits>0)).length;
+    statsHtml+=`<div class="stat"><div class="stat-n">${doneCount}/6</div><div class="stat-l">✅ cuidados hoje</div></div>`;
+  }
+  statsHtml+=`<div class="stat ${streaks.pilula?'good':''}"><div class="stat-n">🔥 ${streaks.pilula||0}</div><div class="stat-l">pílula seguidos</div></div>`;
+  statsHtml+=`<div class="stat ${streaks.remedio?'good':''}"><div class="stat-n">🔥 ${streaks.remedio||0}</div><div class="stat-l">remédio seguidos</div></div>`;
+  // ciclo (fluxo dos últimos 7 dias)
+  const cyc=snap.cycle; let cycleHtml='';
+  if(cyc && Array.isArray(cyc.flows)){
+    const COL=['#efe7ea','#fbe4d8','#e89e8a','#c2603f','#8b3a26'], BRD=['#dcd0d3','#e8b29c','#c87a64','#9c4a2c','#6e2b1a'], LBL=['Nada','Spotting','Leve','Médio','Forte'];
+    const dots=cyc.flows.map((f,i)=>`<span class="cyd${i===6?' today':''}" style="background:${COL[f]||COL[0]};border-color:${BRD[f]||BRD[0]}"></span>`).join('');
+    cycleHtml=`<div class="sec">Ciclo · últimos 7 dias</div><div class="card cyc-card"><div class="cyc-dots">${dots}</div><div class="cyc-today">Hoje: <b>${cyc.logged?esc(LBL[cyc.today]||'Nada'):'—'}</b></div></div>`;
+  }
 
   app.innerHTML=`
     <div class="card creature-card">
-      <div class="cr-stage ${glow}"><img src="creature/${asset}.png" alt=""></div>
+      <div class="cr-stage ${glow}">${creatureSVG(idx, mood)}</div>
       <div class="cr-name">${esc(name)}</div>
       <div class="cr-level">${esc(LEVELS[idx][0])}</div>
       <div class="cr-text">${esc(STAGE_TEXT[idx]||'')}</div>
@@ -223,6 +310,7 @@ function renderMirror(snap, treino){
     <div class="checks">${checks}</div>
     <div class="sec">Hoje</div>
     <div class="stats">${statsHtml}</div>
+    ${cycleHtml}
     ${trHtml}`;
 }
 
@@ -301,6 +389,16 @@ async function flushQueue(){
     }
     saveQueue(keep);
   } finally { _flushing=false; }
+}
+async function sendCafe(){
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  const ev={ id:uid(), ts:Date.now(), day:new Date().toLocaleDateString('sv-SE'), type:'checkin', habit:'cafe', device:'phone' };
+  const q=loadQueue(); q.push(ev); saveQueue(q);
+  _cafeDelta++;
+  const el=document.querySelector('.stat[data-cafe]');
+  if(el){ el.classList.add('justdone'); const n=el.querySelector('.stat-n'); if(n && snapCafe){ n.textContent=((snapCafe.doses||0)+_cafeDelta)+'/'+snapCafe.limit; } }
+  try{ navigator.vibrate && navigator.vibrate(15); }catch(e){}
+  await flushQueue();
 }
 async function sendCheckin(habit){
   if(!getPat()){ document.getElementById('gear').click(); return; }
