@@ -94,6 +94,10 @@
     <h3>Conectar</h3>
     <p>Cola o token (PAT) do <b>meu-cuidado-sync</b>. Ele conecta este celular ao seu Meu Cuidado do computador. Fica só neste aparelho.</p>
     <input id="patInput" type="password" placeholder="github_pat_… (cola aqui)" autocomplete="off">
+    <div id="notifRow" style="border-top:1px solid var(--line);margin:2px 0 12px;padding-top:12px">
+      <button class="btn solid" id="notifBtn" style="width:100%">🔔 Ativar lembretes no celular</button>
+      <p id="notifStatus" style="margin:8px 2px 0;font-size:11.5px;color:var(--muted);line-height:1.4"></p>
+    </div>
     <div class="modal-btns">
       <button class="btn ghost" id="patCancel">Fechar</button>
       <button class="btn solid" id="patSave">Salvar</button>
@@ -104,6 +108,15 @@
 <script>
 const OWNER='lucasrobertoooo', REPO='meu-cuidado-sync', BRANCH='main';
 const LS_PAT='meucuidado_pat_v1';
+const LS_NOTIF='meucuidado_notif_v1';
+const VAPID_PUBLIC='BJ58DKdvFp_-vpUdy4QzqzhEnjHAHrt4gFH0ckR6VACPFuBbjBP4oAq_w5k9ZAJ5uGNVZRHodSl1y68S3VTGxIM';
+const AGUA_FRASES=[
+  'Bebe água, humana. Tua criatura cuida melhor de quem se cuida. 💧',
+  'Um gole agora. As sombras aprovam a hidratação.',
+  'Psiu… água. Teu cérebro sussurra obrigada.',
+  'Hora do golinho. Eu vejo tudo — até a sede.',
+  'Água. Simples assim. Me deixa orgulhosa, guardiã.',
+];
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
 const GLOW=['','','','','','','glow-gold','glow-elf'];
@@ -184,12 +197,124 @@ async function refresh(){
   if(s.data && s.data.placeholder){ showState('Conectado! Aguardando o Meu Cuidado do computador enviar seus dados…<br><small>Abre o app no PC pra ele publicar.</small>'); return; }
   _lastOk=Date.now();
   renderMirror(s.data||{}, (t&&t.data&&!t.data.placeholder)?t.data:null);
+  ensureNotif(s.data);
   document.getElementById('foot').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+}
+
+// ===== Notificações (remédio via Web Push + água local) =====
+function urlB64ToU8(b64){
+  const pad='='.repeat((4-b64.length%4)%4);
+  const s=(b64+pad).replace(/-/g,'+').replace(/_/g,'/');
+  const raw=atob(s); const arr=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++) arr[i]=raw.charCodeAt(i);
+  return arr;
+}
+async function ghGetMeta(file){
+  const pat=getPat(); if(!pat) return {err:'no-pat'};
+  try{
+    const r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${file}?ref=${BRANCH}`,{headers:{Authorization:'Bearer '+pat,Accept:'application/vnd.github+json'}});
+    if(r.status===404) return {sha:null,data:null};
+    if(!r.ok) return {err:'http-'+r.status};
+    const j=await r.json();
+    let data=null; try{ data=JSON.parse(decodeURIComponent(escape(atob((j.content||'').replace(/\n/g,''))))); }catch(e){}
+    return {sha:j.sha,data};
+  }catch(e){ return {err:'net'}; }
+}
+async function ghPut(file,obj,message,sha){
+  const pat=getPat(); if(!pat) return {err:'no-pat'};
+  const content=btoa(unescape(encodeURIComponent(JSON.stringify(obj,null,2)+'\n')));
+  const body={message,content,branch:BRANCH}; if(sha) body.sha=sha;
+  try{
+    const r=await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${file}`,{method:'PUT',headers:{Authorization:'Bearer '+pat,Accept:'application/vnd.github+json'},body:JSON.stringify(body)});
+    return r.ok?{ok:true}:{err:'http-'+r.status};
+  }catch(e){ return {err:'net'}; }
+}
+async function publishSubscription(sub){
+  const j=sub.toJSON();
+  for(let attempt=0;attempt<2;attempt++){
+    const cur=await ghGetMeta('push-subs.json');
+    if(cur.err) return cur;
+    let list=Array.isArray(cur.data)?cur.data:[];
+    list=list.filter(s=>s && s.endpoint!==j.endpoint); list.push(j);
+    const res=await ghPut('push-subs.json',list,'celular: registra inscrição de push',cur.sha||undefined);
+    if(res.ok) return {ok:true};
+    if(res.err!=='http-409') return res; // 409 = conflito, tenta de novo
+  }
+  return {err:'conflict'};
+}
+function aguaPhrase(seed){ return AGUA_FRASES[Math.abs(seed)%AGUA_FRASES.length]; }
+async function armWaterFromSnap(snap){
+  try{
+    if(!('serviceWorker' in navigator)) return;
+    if(!('Notification' in window) || Notification.permission!=='granted') return;
+    if(!('showTrigger' in Notification.prototype) && !('TimestampTrigger' in window)) return; // sem suporte
+    const agua=snap&&snap.reminders&&snap.reminders.agua;
+    if(!agua||!agua.enabled||!Array.isArray(agua.times)||!agua.times.length) return;
+    const reg=await navigator.serviceWorker.ready;
+    const now=Date.now();
+    for(let off=0;off<3;off++){ // hoje + 2 dias de buffer
+      const base=new Date(); base.setDate(base.getDate()+off);
+      const y=base.getFullYear(), mo=String(base.getMonth()+1).padStart(2,'0'), d=String(base.getDate()).padStart(2,'0');
+      for(const t of agua.times){
+        const [hh,mm]=String(t).split(':').map(Number);
+        const when=new Date(base); when.setHours(hh,mm||0,0,0);
+        const ts=when.getTime();
+        if(ts<=now+60000) continue;
+        const tag=`mc-agua-${y}${mo}${d}-${String(t).replace(':','')}`;
+        try{
+          await reg.showNotification('💧 Hora da água',{
+            body:aguaPhrase(hh*60+(mm||0)+off), tag, icon:'icon-192.png', badge:'icon-192.png',
+            renotify:false, silent:false, showTrigger:new TimestampTrigger(ts), data:{url:'./'}
+          });
+        }catch(e){}
+      }
+    }
+  }catch(e){}
+}
+function notifStatusText(){
+  const el=document.getElementById('notifStatus'); if(!el) return;
+  if(!('Notification' in window)){ el.textContent='Este navegador não suporta notificações.'; return; }
+  const p=Notification.permission;
+  if(p==='granted' && localStorage.getItem(LS_NOTIF)==='on'){
+    const trig=('showTrigger' in Notification.prototype)||('TimestampTrigger' in window);
+    el.textContent='Ativado ✓ Remédio (na hora certa) e água'+(trig?'':' — obs: água agendada só funciona bem no Chrome Android');
+  } else if(p==='denied'){ el.textContent='Notificações bloqueadas nas configurações do navegador. Libere pra ativar.'; }
+  else { el.textContent='Toque pra ativar remédio e água na voz da criatura, nos horários que você configura no PC.'; }
+}
+async function enableNotifications(){
+  const btn=document.getElementById('notifBtn'), st=document.getElementById('notifStatus');
+  if(!('Notification' in window)){ if(st) st.textContent='Sem suporte a notificações.'; return; }
+  if(!getPat()){ if(st) st.textContent='Cole o token primeiro, aí ative.'; return; }
+  if(btn){ btn.disabled=true; btn.textContent='Ativando…'; }
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){ if(st) st.textContent='Permissão não concedida.'; return; }
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); }
+    const pub=await publishSubscription(sub);
+    if(pub.err){ if(st) st.textContent='Ativei local, mas falhou registrar o remédio no servidor ('+pub.err+'). Tenta de novo.'; }
+    localStorage.setItem(LS_NOTIF,'on');
+    const snap=await ghGetMeta('snapshot.json');
+    if(snap.data) armWaterFromSnap(snap.data);
+  }catch(e){ if(st) st.textContent='Falhou: '+(e&&e.message||e); }
+  finally{ if(btn){ btn.disabled=false; btn.textContent='🔔 Ativar lembretes no celular'; } notifStatusText(); }
+}
+// re-arma silenciosamente no boot/refresh se já estava ativo
+async function ensureNotif(snap){
+  if(!('Notification' in window) || Notification.permission!=='granted' || localStorage.getItem(LS_NOTIF)!=='on') return;
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); await publishSubscription(sub); }
+  }catch(e){}
+  if(snap) armWaterFromSnap(snap);
 }
 
 // modal PAT
 const modal=document.getElementById('patModal');
-document.getElementById('gear').onclick=()=>{ document.getElementById('patInput').value=''; modal.classList.add('show'); };
+document.getElementById('notifBtn').onclick=enableNotifications;
+document.getElementById('gear').onclick=()=>{ document.getElementById('patInput').value=''; notifStatusText(); modal.classList.add('show'); };
 document.getElementById('patCancel').onclick=()=>modal.classList.remove('show');
 document.getElementById('patSave').onclick=()=>{
   const v=(document.getElementById('patInput').value||'').trim();
