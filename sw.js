@@ -1,4 +1,4 @@
-const SHELL = 'meucuidado-shell-v11';
+const SHELL = 'meucuidado-shell-v12';
 const ASSETS = ['./', './index.html', './manifest.json',
   './icon-192.png','./icon-512.png','./apple-touch-icon.png',
   './creature/char-egg.png','./creature/char-1.png','./creature/char-2.png','./creature/char-3.png','./creature/char-4.png','./creature/char-5.png'];

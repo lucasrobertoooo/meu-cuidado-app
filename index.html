@@ -440,7 +440,7 @@ async function flushQueue(){
     const keep=[];
     for(const ev of q){
       const fname='inbox/'+ev.ts+'-'+String(ev.id).replace(/[^a-zA-Z0-9]/g,'').slice(0,10)+'.json';
-      const res=await ghPut(fname,ev,'checkin '+ev.habit);
+      const res=await ghPut(fname,ev,(ev.type||'evento')+' '+(ev.habit||ev.action||''));
       if(!(res.ok || res.err==='http-422')) keep.push(ev); // falhou: retry depois
     }
     saveQueue(keep);
