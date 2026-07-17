@@ -172,7 +172,7 @@
 const OWNER='lucasrobertoooo', REPO='meu-cuidado-sync', BRANCH='main';
 const LS_PAT='meucuidado_pat_v1';
 const LS_NOTIF='meucuidado_notif_v1';
-const VAPID_PUBLIC='BJ58DKdvFp_-vpUdy4QzqzhEnjHAHrt4gFH0ckR6VACPFuBbjBP4oAq_w5k9ZAJ5uGNVZRHodSl1y68S3VTGxIM';
+const VAPID_PUBLIC='BIuBuGmZ4BepqMKxGIUhl95ZZLzZbzprCFqHVtUzfyPuHaSleHOtwRn_xR8W0tlL2PoIyphZvvFnH8YeXYA8ZU8';
 const LS_QUEUE='meucuidado_inbox_q_v1';
 let _optimistic=new Set();
 let _cafeDelta=0, _cafeSeen=null, snapCafe=null;
@@ -287,8 +287,11 @@ function renderMirror(snap, treino){
   const cur=LEVELS[idx][1], nxt=LEVELS[idx+1]?LEVELS[idx+1][1]:cur;
   const pct=nxt>cur?Math.min(100,Math.round((xp-cur)/(nxt-cur)*100)):100;
   const care=snap.careDays||0;
-  const doneKeys=(snap.doneToday&&snap.doneToday.keys)||[];
-  const waterUnits=snap.water||0;
+  // Só conta como "feito hoje" se o snapshot for do dia de hoje (senão mostrava marcações de ontem).
+  const _today=new Date().toLocaleDateString('sv-SE');
+  const _dayFresh=!snap.doneToday || !snap.doneToday.day || snap.doneToday.day===_today;
+  const doneKeys=_dayFresh ? ((snap.doneToday&&snap.doneToday.keys)||[]) : [];
+  const waterUnits=_dayFresh ? (snap.water||0) : 0;
   // confirmou pelo snapshot? tira do otimista
   _optimistic.forEach(k=>{ if(doneKeys.indexOf(k)>=0 || (k==='agua'&&waterUnits>0)) _optimistic.delete(k); });
 
@@ -381,7 +384,7 @@ async function refresh(){
   if(s.data && s.data.placeholder){ showState('Conectado! Aguardando o Meu Cuidado do computador enviar seus dados…<br><small>Abre o app no PC pra ele publicar.</small>'); return; }
   _lastOk=Date.now();
   renderMirror(s.data||{}, (t&&t.data&&!t.data.placeholder)?t.data:null);
-  ensureNotif(s.data);
+  ensureNotif();
   flushQueue();
   document.getElementById('foot').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
@@ -595,54 +598,57 @@ function notifStatusText(){
   if(!('Notification' in window)){ el.textContent='Este navegador não suporta notificações.'; return; }
   const p=Notification.permission;
   if(p==='granted' && localStorage.getItem(LS_NOTIF)==='on'){
-    el.textContent = notifTriggersOK() ? 'Ativado ✓ Água e remédio disparam na hora exata (agendados no aparelho, mesmo com o app fechado).' : 'Ativado, mas este navegador não agenda na hora exata. Use o Chrome com o app instalado na tela inicial.';
+    el.textContent='Ativado ✓ Água e remédio chegam do PC (quando ele está ligado), na voz da criatura.';
   } else if(p==='denied'){ el.textContent='Notificações bloqueadas nas configurações do navegador. Libere pra ativar.'; }
   else { el.textContent='Toque pra ativar água e remédio na voz da criatura, nos horários que você configura no PC.'; }
 }
-// Diagnóstico — mostra no ⚙ por que a notificação (não) dispara, com dado real.
+const LS_SUBKEY='meucuidado_subkey_v1';
+// Registra/atualiza a inscrição de push. Se a chave VAPID mudou, re-inscreve com a nova.
+async function ensureSub(){
+  const reg=await navigator.serviceWorker.ready;
+  let sub=await reg.pushManager.getSubscription();
+  if(sub && localStorage.getItem(LS_SUBKEY)!==VAPID_PUBLIC){ try{ await sub.unsubscribe(); }catch(e){} sub=null; }
+  if(!sub){ sub=await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); localStorage.setItem(LS_SUBKEY,VAPID_PUBLIC); }
+  if(getPat()){ const r=await publishSubscription(sub); return r; }
+  return {err:'no-pat'};
+}
+// Diagnóstico — mostra no ⚙ o estado real do push (que vem do PC).
 async function notifDiag(){
   const el=document.getElementById('notifStatus'); if(!el) return;
   const L=[];
   L.push('Permissão: '+(('Notification' in window)?Notification.permission:'sem suporte'));
-  L.push('Agendar na hora exata: '+(notifTriggersOK()?'suportado ✓':'NÃO suportado ✗ (precisa Chrome + app na tela inicial)'));
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    L.push('Inscrição de push: '+(sub?('registrada ✓'+(localStorage.getItem(LS_SUBKEY)===VAPID_PUBLIC?'':' (chave antiga — reative)')):'NÃO registrada (toque em Ativar)'));
+  }catch(e){ L.push('Push: '+(e.message||e)); }
   const rem=_lastSnap&&_lastSnap.reminders;
   if(rem){
     const r=rem.remedio, a=rem.agua;
     L.push('Remédio (PC): '+((r&&r.enabled&&r.times&&r.times.length)?r.times.join(', '):'desligado/sem horário'));
     L.push('Água (PC): '+((a&&a.enabled&&a.times&&a.times.length)?a.times.join(', '):'desligado/sem horário'));
   } else L.push('Horários: ainda não chegaram do PC (abra o PC e espere ~10s).');
-  try{
-    if('serviceWorker' in navigator){
-      const reg=await navigator.serviceWorker.ready;
-      let pend=[];
-      try{ const ns=await reg.getNotifications({includeTriggered:true}); pend=(ns||[]).filter(n=>n.tag&&n.tag.indexOf('mc-')===0); }catch(e){ L.push('(não deu pra listar agendadas: '+(e.message||e)+')'); }
-      L.push('Lembretes agendados no aparelho: '+pend.length);
-      if(pend.length){ const tags=pend.map(n=>n.tag.replace('mc-','')).slice(0,4); L.push('→ '+tags.join(' · ')); }
-    }
-  }catch(e){ L.push('SW: '+(e.message||e)); }
+  L.push('Obs: os lembretes chegam do PC quando ele está ligado.');
   el.innerHTML=L.map(x=>esc(x)).join('<br>');
 }
 async function enableNotifications(){
   const btn=document.getElementById('notifBtn'), st=document.getElementById('notifStatus');
   if(!('Notification' in window)){ if(st) st.textContent='Sem suporte a notificações.'; return; }
+  if(!getPat()){ if(st) st.textContent='Cole o token primeiro, aí ative os lembretes.'; return; }
   if(btn){ btn.disabled=true; btn.textContent='Ativando…'; }
   try{
     const perm=await Notification.requestPermission();
     if(perm!=='granted'){ if(st) st.textContent='Permissão não concedida.'; return; }
     localStorage.setItem(LS_NOTIF,'on');
-    let snap=_lastSnap;
-    if(!snap && getPat()){ const g=await ghGetMeta('snapshot.json'); if(g && g.data) snap=g.data; }
-    if(snap) await armLocalReminders(snap);
-    else if(st) st.textContent='Permissão ok. Assim que os horários sincronizarem do PC, os lembretes são agendados.';
-    // inscrição de push (backup best-effort)
-    try{ const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription(); if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlB64ToU8(VAPID_PUBLIC)}); if(getPat()) publishSubscription(sub); }catch(e){}
+    const r=await ensureSub(); // registra a inscrição — o PC envia o push na hora
+    if(r && r.err){ if(st) st.textContent='Ativei, mas falhou registrar a inscrição ('+r.err+'). Tenta de novo.'; }
   }catch(e){ if(st) st.textContent='Falhou: '+(e&&e.message||e); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='🔔 Ativar lembretes no celular'; } notifStatusText(); }
 }
-// re-arma silenciosamente no refresh com os horários mais novos do snapshot
-async function ensureNotif(snap){
+// mantém a inscrição registrada (migra a chave se mudou) a cada refresh
+async function ensureNotif(){
   if(!('Notification' in window) || Notification.permission!=='granted' || localStorage.getItem(LS_NOTIF)!=='on') return;
-  if(snap) armLocalReminders(snap);
+  try{ await ensureSub(); }catch(e){}
 }
 
 // modal PAT
