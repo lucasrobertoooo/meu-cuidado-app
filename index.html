@@ -108,6 +108,27 @@
   .sc-tt{font-size:13px;font-weight:600;display:block;color:var(--ink)}
   .sc-sub{font-size:11px;color:var(--muted)}
   .sc-empty{font-size:12px;color:var(--muted)}
+  /* financeiro */
+  .fin-mcard{padding:14px}
+  .fin-sobra{display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-radius:12px;padding:11px 13px;margin-bottom:8px}
+  .fin-sobra span{font-size:12px;color:var(--muted);font-weight:700}
+  .fin-sobra b{font-size:19px;font-weight:800}
+  .fin-sobra.pos b{color:#16a34a}
+  .fin-sobra.neg b{color:var(--clay)}
+  .fin-mini{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--muted);margin-bottom:6px;flex-wrap:wrap}
+  .fin-mini b{color:var(--ink);font-weight:700;display:block}
+  .fin-cat{margin-top:12px}
+  .fin-cat-head{display:flex;justify-content:space-between;font-weight:700;font-size:13px;margin-bottom:2px;color:var(--ink)}
+  .fin-cat-tot{color:var(--muted)}
+  .fin-row{display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .fin-row:last-child{border-bottom:none}
+  .fin-chk{flex:none;width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);background:#fff;cursor:pointer;color:#fff;font-weight:800;font-size:12px;line-height:1;padding:0}
+  .fin-row.pago .fin-chk{background:var(--sage);border-color:transparent}
+  .fin-rl{flex:1;font-size:13px;color:var(--ink)}
+  .fin-rl em{color:var(--muted);font-size:11px;font-style:normal;margin-left:6px}
+  .fin-row.pago .fin-rl{color:var(--muted);text-decoration:line-through}
+  .fin-rv{font-size:13px;font-weight:700;color:var(--ink)}
+  .fin-note{font-size:11px;color:var(--muted);margin-top:10px;text-align:center}
   /* check-ins */
   .sec{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:20px 6px 10px}
   .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
@@ -197,6 +218,9 @@ const LS_PENDPRI='meucuidado_pendpri_v1', LS_PENDNOTE='meucuidado_pendnote_v1';
 let _lastSnap=null, _lastTreino=null, snapPriorities=[], snapNotes=[];
 const SKIN_MINI={"demaquilante":["🧴","Demaquilar","Óleo/bálsamo"],"micelar":["💧","Demaquilar","Água micelar"],"limpeza":["🧼","Limpeza",""],"tonico":["🌿","Tônico",""],"vitc":["🍊","Antioxidante","Vitamina C"],"niacinamida":["✨","Equilíbrio","Niacinamida"],"azelaico":["🌼","Antimanchas","Ácido azelaico"],"hialuronico":["💦","Umectante","Ác. hialurônico"],"esfoliante":["🧪","Esfoliação","AHA/BHA"],"retinoide":["🌙","Renovação","Retinoide"],"peptideos":["🔗","Firmeza","Peptídeos"],"serum":["🧴","Tratamento","Sérum"],"ceramidas":["🧱","Barreira","Ceramidas"],"hidratante":["💧","Hidratação",""],"olhos":["👁️","Contorno dos olhos",""],"protetor":["☀️","Proteção","Protetor solar"],"mascara":["🎭","Máscara","Argila/hidratante"],"custom":["🧴","Passo",""]};
 let _skinOpt={am:false,pm:false};
+let _finPayOpt={}; // rowId -> paid (otimista)
+const FIN_ICON={"Tenho":"💰","Receber":"📥","Fixo":"📌","Variável":"🔀","Cartão":"💳"};
+function fmtBRL(v){ return 'R$ '+(Number(v)||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
 function rerender(){ if(_lastSnap) renderMirror(_lastSnap, _lastTreino); }
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
@@ -380,6 +404,24 @@ function renderMirror(snap, treino){
     };
     skinHtml=`<div class="sec">Skincare</div><div class="card sc-card">${skRoutine('am','☀️ Manhã')+skRoutine('pm','🌙 Noite')}</div>`;
   }
+  // financeiro (ver saldos/sobra + marcar pago; cadastro/edição é no PC)
+  const fin=snap.financeiro; let finHtml='';
+  if(fin && fin.sum){
+    const sm=fin.sum;
+    (fin.rows||[]).forEach(r=>{ const isPaid=r.status==='Pago'; if(_finPayOpt[r.id]!==undefined && _finPayOpt[r.id]===isPaid) delete _finPayOpt[r.id]; });
+    const sobraCls=sm.sobra>=0?'pos':'neg';
+    const M=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+    const mp=(fin.mes||'').split('-'); const mesLbl=mp[1]?`${M[+mp[1]-1]} ${mp[0]}`:'';
+    let cats='';
+    ['Tenho','Receber','Fixo','Variável','Cartão'].forEach(cat=>{
+      const rs=(fin.rows||[]).filter(r=>r.cat===cat); if(!rs.length) return;
+      const tot=rs.reduce((a,r)=>a+(Number(r.valor)||0),0);
+      cats+=`<div class="fin-cat"><div class="fin-cat-head"><span>${FIN_ICON[cat]} ${cat}</span><span class="fin-cat-tot">${fmtBRL(tot)}</span></div>`
+        + rs.map(r=>{ const paid=(_finPayOpt[r.id]!==undefined)?_finPayOpt[r.id]:(r.status==='Pago'); return `<div class="fin-row ${paid?'pago':''}" data-id="${r.id}"><button class="fin-chk" onclick="sendFinPay('${r.id}',${paid?'true':'false'})">${paid?'✓':''}</button><span class="fin-rl">${esc(r.label||'—')}${r.venc?`<em>dia ${r.venc}</em>`:''}</span><span class="fin-rv">${fmtBRL(r.valor)}</span></div>`; }).join('')
+        + `</div>`;
+    });
+    finHtml=`<div class="sec">Finanças${mesLbl?` · ${mesLbl}`:''}</div><div class="card fin-mcard"><div class="fin-sobra ${sobraCls}"><span>Sobra do mês</span><b>${fmtBRL(sm.sobra)}</b></div><div class="fin-mini"><span>Tenho <b>${fmtBRL(sm.tenho)}</b></span><span>A receber <b>${fmtBRL(sm.receber)}</b></span><span>Contas <b>${fmtBRL(sm.previsto)}</b></span></div>${cats||'<div class="fin-note">Sem lançamentos neste mês.</div>'}<div class="fin-note">Para adicionar ou editar, use o PC.</div></div>`;
+  }
 
   app.innerHTML=`
     <div class="card creature-card">
@@ -400,6 +442,7 @@ function renderMirror(snap, treino){
     <div class="stats">${statsHtml}</div>
     ${cycleHtml}
     ${skinHtml}
+    ${finHtml}
     ${notesHtml}
     ${trHtml}`;
   if(_priAddVal){ const el=document.getElementById('priAdd'); if(el){ el.value=_priAddVal; if(_priAddFocused){ el.focus(); try{ el.setSelectionRange(_priAddVal.length,_priAddVal.length); }catch(e){} } } }
@@ -480,6 +523,13 @@ async function flushQueue(){
     }
     saveQueue(keep);
   } finally { _flushing=false; }
+}
+async function sendFinPay(rowId, wasPaid){
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  const paid=!wasPaid; _finPayOpt[rowId]=paid;
+  const el=document.querySelector('.fin-row[data-id="'+rowId+'"]'); if(el){ el.classList.toggle('pago',paid); const c=el.querySelector('.fin-chk'); if(c) c.textContent=paid?'✓':''; }
+  try{ navigator.vibrate && navigator.vibrate(12); }catch(e){}
+  await enqueueEvent({id:uid(),ts:Date.now(),type:'finpay',rowId,paid,device:'phone'});
 }
 async function sendSkincare(routine){
   if(!getPat()){ document.getElementById('gear').click(); return; }
