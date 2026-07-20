@@ -91,6 +91,23 @@
   .note-title-in{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:10px;padding:11px;font:inherit;font-size:15px;font-weight:700}
   .note-body-in{width:100%;box-sizing:border-box;border:1px solid var(--line2);border-radius:10px;padding:11px;font:inherit;font-size:14px;min-height:180px;resize:vertical;line-height:1.5}
   .note-btns{margin-top:2px}
+  /* skincare */
+  .sc-card{padding:6px 14px 12px}
+  .sc-routine{border-top:1px solid var(--line);padding:11px 0}
+  .sc-routine:first-of-type{border-top:none;padding-top:6px}
+  .sc-routine.justdone{animation:pop .32s ease}
+  .sc-rtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .sc-rname{font-weight:700;font-size:14px;color:var(--ink)}
+  .sc-routine.done .sc-rname{color:var(--sage)}
+  .sc-check{border:1px solid var(--line2);background:#fff;border-radius:20px;padding:6px 14px;font:inherit;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+  .sc-check.on{background:var(--sage);border-color:transparent;color:#fff}
+  .sc-steps{display:flex;flex-direction:column;gap:6px}
+  .sc-step{display:flex;align-items:center;gap:9px}
+  .sc-ic{font-size:16px;flex:none;width:20px;text-align:center}
+  .sc-txt{flex:1;min-width:0}
+  .sc-tt{font-size:13px;font-weight:600;display:block;color:var(--ink)}
+  .sc-sub{font-size:11px;color:var(--muted)}
+  .sc-empty{font-size:12px;color:var(--muted)}
   /* check-ins */
   .sec{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--faint);font-weight:800;margin:20px 6px 10px}
   .checks{display:grid;grid-template-columns:1fr 1fr;gap:9px}
@@ -178,6 +195,8 @@ let _optimistic=new Set();
 let _cafeDelta=0, _cafeSeen=null, snapCafe=null;
 const LS_PENDPRI='meucuidado_pendpri_v1', LS_PENDNOTE='meucuidado_pendnote_v1';
 let _lastSnap=null, _lastTreino=null, snapPriorities=[], snapNotes=[];
+const SKIN_MINI={"demaquilante":["🧴","Demaquilar","Óleo/bálsamo"],"micelar":["💧","Demaquilar","Água micelar"],"limpeza":["🧼","Limpeza",""],"tonico":["🌿","Tônico",""],"vitc":["🍊","Antioxidante","Vitamina C"],"niacinamida":["✨","Equilíbrio","Niacinamida"],"azelaico":["🌼","Antimanchas","Ácido azelaico"],"hialuronico":["💦","Umectante","Ác. hialurônico"],"esfoliante":["🧪","Esfoliação","AHA/BHA"],"retinoide":["🌙","Renovação","Retinoide"],"peptideos":["🔗","Firmeza","Peptídeos"],"serum":["🧴","Tratamento","Sérum"],"ceramidas":["🧱","Barreira","Ceramidas"],"hidratante":["💧","Hidratação",""],"olhos":["👁️","Contorno dos olhos",""],"protetor":["☀️","Proteção","Protetor solar"],"mascara":["🎭","Máscara","Argila/hidratante"],"custom":["🧴","Passo",""]};
+let _skinOpt={am:false,pm:false};
 function rerender(){ if(_lastSnap) renderMirror(_lastSnap, _lastTreino); }
 const LEVELS=[['Ovo',0],['Filhote',200],['Jovem',600],['Companheiro',1400],['Guardião',3000],['Ancião',6000],['Ancião radiante',12000],['Espírito noturno',22000]];
 const ASSET=['char-egg','char-1','char-2','char-3','char-4','char-5','char-5','char-5'];
@@ -349,6 +368,18 @@ function renderMirror(snap, treino){
   const notes=overlayNotes(snapNotes); const shownN=notes.slice(0,4);
   const noteItems=shownN.length ? shownN.map(n=>`<button class="note-it" onclick="openNoteEditor('${n.id}')"><div class="note-t">${esc(n.title||'Sem título')}</div>${n.body?`<div class="note-s">${esc((n.body||'').slice(0,72).replace(/\n/g,' '))}${(n.body||'').length>72?'…':''}</div>`:''}</button>`).join('') : `<div class="pit-empty">Nenhuma nota ainda.</div>`;
   const notesHtml=`<div class="sec">Notas${notes.length>4?` · ${notes.length}`:''}</div><div class="card notes-card">${noteItems}<button class="note-new" onclick="openNoteEditor(null)">+ Nova nota</button></div>`;
+  // skincare (rotina manhã/noite — check da rotina inteira; cadastro é no PC)
+  const sk=snap.skincare; let skinHtml='';
+  if(sk && Array.isArray(sk.am)){
+    const skDone=sk.done||{};
+    ['am','pm'].forEach(r=>{ if(skDone[r]) _skinOpt[r]=false; });
+    const skRoutine=(r,name)=>{
+      const isDone=skDone[r]||_skinOpt[r];
+      const steps=(sk[r]||[]).map(s=>{ const L=SKIN_MINI[s.t]||SKIN_MINI.custom; const title=(s.n&&s.n.trim())||L[1]; const sub=[L[2],s.p].filter(Boolean).join(' · '); return `<div class="sc-step"><span class="sc-ic">${L[0]}</span><span class="sc-txt"><span class="sc-tt">${esc(title)}</span>${sub?`<span class="sc-sub">${esc(sub)}</span>`:''}</span></div>`; }).join('');
+      return `<div class="sc-routine ${isDone?'done':''}" data-r="${r}"><div class="sc-rtop"><span class="sc-rname">${name}</span><button class="sc-check ${isDone?'on':''}" ${isDone?'disabled':`onclick="sendSkincare('${r}')"`}>${isDone?'✓ feito':'marcar feito'}</button></div><div class="sc-steps">${steps||'<div class="sc-empty">Sem produtos — cadastre no PC.</div>'}</div></div>`;
+    };
+    skinHtml=`<div class="sec">Skincare</div><div class="card sc-card">${skRoutine('am','☀️ Manhã')+skRoutine('pm','🌙 Noite')}</div>`;
+  }
 
   app.innerHTML=`
     <div class="card creature-card">
@@ -368,6 +399,7 @@ function renderMirror(snap, treino){
     <div class="sec">Hoje</div>
     <div class="stats">${statsHtml}</div>
     ${cycleHtml}
+    ${skinHtml}
     ${notesHtml}
     ${trHtml}`;
   if(_priAddVal){ const el=document.getElementById('priAdd'); if(el){ el.value=_priAddVal; if(_priAddFocused){ el.focus(); try{ el.setSelectionRange(_priAddVal.length,_priAddVal.length); }catch(e){} } } }
@@ -448,6 +480,14 @@ async function flushQueue(){
     }
     saveQueue(keep);
   } finally { _flushing=false; }
+}
+async function sendSkincare(routine){
+  if(!getPat()){ document.getElementById('gear').click(); return; }
+  _skinOpt[routine]=true;
+  const el=document.querySelector('.sc-routine[data-r="'+routine+'"]'); if(el){ el.classList.add('done','justdone'); }
+  try{ navigator.vibrate && navigator.vibrate(15); }catch(e){}
+  rerender();
+  await enqueueEvent({id:uid(),ts:Date.now(),type:'skincare',routine,device:'phone'});
 }
 async function sendCafe(){
   if(!getPat()){ document.getElementById('gear').click(); return; }
